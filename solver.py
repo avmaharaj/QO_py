@@ -22,7 +22,7 @@ class RecursiveSolver(object):
         solver = RecursiveSolver(model,system_size = , min_field = , max_field =  , mu = )
         solver.run()
         
-        ##TODO: write down all the logic of the model class necessary for solver to work
+        ##TODO: Parallelize the run loop implementation.
         
 
     """
@@ -91,6 +91,7 @@ class RecursiveSolver(object):
 
 
         #now loop over values of the magnetic field
+        #TODO: Parallelize this loop in some way
         for b in xrange(self.num_steps):
 
             dos = 0.0 + 0.0*1j
