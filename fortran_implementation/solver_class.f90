@@ -1,6 +1,6 @@
 module solver_class
   
-  use t2g_hamiltonian_class
+  use bilayer_hamiltonian_class
   use linalg
 
   !The Hamiltonian class - returns the diagonal and off diagonal
@@ -19,7 +19,7 @@ module solver_class
     type(Hamiltonian) :: Ham
     integer :: num_steps = 1500
     integer :: Nsize = 8192
-    integer :: dim = 6
+    integer :: dim = 2
      real(kind=8) :: min_inv_field = 30.d0
      real(kind=8) :: max_inv_field = 6000.d0
      logical :: verbose = .true.
@@ -51,21 +51,21 @@ contains
     real(kind=8) :: dos, dfield, bfield, invbfield
 
     
+
+
     
     !system_size = this%Nsize
     do b=1,this%num_steps
       call initialize(this)
       dos = 0.d0
-      dfield = (this%max_inv_field - this%min_inv_field)/this%num_steps
+      dfield = (this%max_inv_field - this%min_inv_field)/(1.d0*this%num_steps)
       bfield = 1.d0/(1.d0*this%min_inv_field + 1.d0*(b-1)*dfield)
       invbfield = 1.d0/bfield
 
 
       dos = get_dos(this,bfield)
 
-      if (this%verbose) then
-        write(6,"(3F30.15,1I10)"), bfield, invbfield, dos, system_size
-      endif
+    
 
       deallocate(dLeft,cLeft,dRight,cRight)
 
@@ -108,21 +108,26 @@ contains
     complex(kind=8), dimension(dim_fix,dim_fix) :: dinv
     integer :: i
 
+    extra_term(:,:)  = dcmplx(0.d0,0.d0)
+    dinv(:,:)  = dcmplx(0.d0,0.d0)
+    dLeft(:,:,:) = dcmplx(0.d0,0.d0)
+    cLeft(:,:,:) = dcmplx(0.d0,0.d0)
+
     do i=1,system_size-1
       if (i.eq.1) then
         dLeft(i,:,:) = this%Ham%diag(i,bfield,0.d0,0.d0)
       else
-        extra_term = matmul(cLeft(i-1,:,:),this%Ham%rBlock(i-1,bfield,0.d0,0.d0))
+        extra_term = mymatmul(cLeft(i-1,:,:),this%Ham%rBlock(i-1,bfield,0.d0,0.d0),dim_fix)
         dLeft(i,:,:) = this%Ham%diag(i,bfield,0.d0,0.d0) + extra_term
       endif
 
       dinv = findinv(dLeft(i,:,:), dim_fix)
-      cLeft(i,:,:) = dcmplx(-1.d0,0.d0)*matmul(this%Ham%lBlock(i+1,bfield,0.d0,0.d0),dinv)
+      cLeft(i,:,:) = dcmplx(-1.d0,0.d0)*(mymatmul(this%Ham%lBlock(i+1,bfield,0.d0,0.d0),dinv,dim_fix))
     enddo
 
     i = system_size
     dLeft(i,:,:) = this%Ham%diag(i, bfield,0.d0,0.d0) &
-                   + matmul(cLeft(i-1,:,:),this%Ham%rBlock(i-1,bfield,0.d0,0.d0))
+                   + mymatmul(cLeft(i-1,:,:),this%Ham%rBlock(i-1,bfield,0.d0,0.d0),dim_fix)
 
   end subroutine downsweep
 
@@ -134,22 +139,27 @@ contains
     complex(kind=8), dimension(dim_fix,dim_fix) :: dinv
     integer :: i,j
 
+    extra_term(:,:)  = dcmplx(0.d0,0.d0)
+    dinv(:,:)  = dcmplx(0.d0,0.d0)
+    dRight(:,:,:) = dcmplx(0.d0,0.d0)
+    cRight(:,:,:) = dcmplx(0.d0,0.d0)
+
     do j=0,system_size-2
       i = system_size - j
       if (i.eq.system_size) then
         dRight(i,:,:) = this%Ham%diag(i,bfield,0.d0,0.d0)
       else
-        extra_term = matmul(cRight(i+1,:,:),this%Ham%lBlock(i+1,bfield,0.d0,0.d0))
+        extra_term = mymatmul(cRight(i+1,:,:),this%Ham%lBlock(i+1,bfield,0.d0,0.d0),dim_fix)
         dRight(i,:,:) = this%Ham%diag(i,bfield,0.d0,0.d0) + extra_term
       endif
 
       dinv = findinv(dRight(i,:,:), dim_fix)
-      cRight(i,:,:) = dcmplx(-1.d0,0.d0)*matmul(this%Ham%rBlock(i-1,bfield,0.d0,0.d0),dinv)
+      cRight(i,:,:) = dcmplx(-1.d0,0.d0)*(mymatmul(this%Ham%rBlock(i-1,bfield,0.d0,0.d0),dinv,dim_fix))
     enddo
 
     i = 1
     dRight(i,:,:) = this%Ham%diag(i, bfield,0.d0,0.d0) &
-                   + matmul(cRight(i+1,:,:),this%Ham%lBlock(i+1,bfield,0.d0,0.d0))
+                   + mymatmul(cRight(i+1,:,:),this%Ham%lBlock(i+1,bfield,0.d0,0.d0),dim_fix)
 
   end subroutine upsweep
 
@@ -165,18 +175,25 @@ contains
     complex(kind=8), dimension(dim_fix,dim_fix) :: ginv, g
     integer :: i,j
 
-    dos1=0.d0
+    dos1 = 0.d0
+
     do i=1,system_size
-      ginv = - this%Ham%diag(i, bfield,0.d0,0.d0) + dLeft(i,:,:) + dRight(i,:,:)
+      ginv = dcmplx(-1.d0,0.d0)*this%Ham%diag(i, bfield,0.d0,0.d0) + dLeft(i,:,:) + dRight(i,:,:)
       g = findinv(ginv, dim_fix)
 
-      trace = cmplx(0.d0,0.d0)
+      trace = dcmplx(0.d0,0.d0)
+
       do j=1,dim_fix
         trace = trace + g(j,j)
       enddo
-      dos1 = dos1 - ( 1.d0/ (pi * system_size) )  * aimag(trace)
+
+      dos1 = dos1 - ( 1.d0/ (1.d0*pi * system_size) )  * dimag(trace)
       !write(6,*) i,dos1
     enddo
+
+    if (this%verbose) then
+      write(6,"(3F30.15,1I10)"), bfield, 1.d0/bfield, dos1, system_size
+    endif
 
   end function calc_dos
 
