@@ -58,7 +58,8 @@
     complex(kind=8) :: const
 
     const = dcmplx(1.d0,0.d0)
-
+    prod(:,:) = dcmplx(0.d0,0.d0)
+    
     call zgemm('N','N',dim,dim,dim,const,A1,dim,B1,dim,const,prod,dim)
 
   end function
